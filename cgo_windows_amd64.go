@@ -1,16 +1,14 @@
-//go:build windows && amd64
+//go:build windows && amd64 && !ocrrs_cuda
 
 package ocrrs
 
-// The Windows prebuilt archive is built with MSVC (target
-// x86_64-pc-windows-msvc), so consumers must compile their cgo with the
-// MSVC toolchain too:
+// Default Windows/amd64 variant: CPU + OpenCL + Vulkan, MSVC linkage.
 //
-//   - Install Visual Studio Build Tools (or full VS).
-//   - Run `go build` from a Developer Command Prompt or after sourcing
-//     vcvars64.bat, so that cl.exe / link.exe / lib.exe are on PATH.
-//   - Set `CC=cl` (and optionally `CXX=cl`) so cgo selects the MSVC
-//     driver instead of the default MinGW gcc.
+// Consumers must build with the MSVC toolchain:
+//   - Install Visual Studio Build Tools (Desktop C++)
+//   - Run `go build` from a Developer Command Prompt (or after
+//     vcvars64.bat) so cl.exe / link.exe / lib.exe are on PATH
+//   - Set CC=cl so cgo uses the MSVC driver, not the default MinGW gcc
 //
 // At runtime the binary additionally needs OpenCL.dll and vulkan-1.dll
 // on PATH if the OpenCL or Vulkan backends are actually used; modern

@@ -18,13 +18,20 @@
 
 $ErrorActionPreference = 'Stop'
 
-$here   = Split-Path -Parent $MyInvocation.MyCommand.Path
-$root   = Split-Path -Parent $here
-$shim   = Join-Path $root 'ocr-rs-c'
-$target = if ($env:OCRRS_TARGET) { $env:OCRRS_TARGET } else { 'x86_64-pc-windows-msvc' }
-$rel    = Join-Path $shim "target\$target\release"
-$out    = Join-Path $root 'prebuilt\windows_amd64'
-$feat   = if ($env:OCRRS_FEATURES) { $env:OCRRS_FEATURES } else { 'opencl vulkan' }
+$here    = Split-Path -Parent $MyInvocation.MyCommand.Path
+$root    = Split-Path -Parent $here
+$shim    = Join-Path $root 'ocr-rs-c'
+$target  = if ($env:OCRRS_TARGET) { $env:OCRRS_TARGET } else { 'x86_64-pc-windows-msvc' }
+$rel     = Join-Path $shim "target\$target\release"
+$variant = if ($env:OCRRS_VARIANT) { $env:OCRRS_VARIANT } else { '' }
+
+if ($variant -eq 'cuda') {
+    $out  = Join-Path $root 'prebuilt\windows_amd64_cuda'
+    $feat = if ($env:OCRRS_FEATURES) { $env:OCRRS_FEATURES } else { 'opencl vulkan cuda' }
+} else {
+    $out  = Join-Path $root 'prebuilt\windows_amd64'
+    $feat = if ($env:OCRRS_FEATURES) { $env:OCRRS_FEATURES } else { 'opencl vulkan' }
+}
 
 # Pin cargo's MSVC linker to the absolute path of link.exe, just in case
 # anything later in the build adds a shadowing directory to PATH.

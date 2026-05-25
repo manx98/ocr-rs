@@ -27,10 +27,12 @@ for _, r := range out.Results {
 
 | GOOS    | GOARCH | Backends bundled                  |
 |---------|--------|-----------------------------------|
-| linux   | amd64  | CPU + OpenCL + Vulkan             |
-| darwin  | amd64  | CPU + OpenCL + Vulkan + Metal     |
-| darwin  | arm64  | CPU + OpenCL + Vulkan + Metal     |
-| windows | amd64  | CPU + OpenCL + Vulkan (MSVC only) |
+| linux   | amd64  | CPU + OpenCL + Vulkan + OpenGL                                                       |
+| linux   | amd64  | CPU + OpenCL + Vulkan + OpenGL + **CUDA** — opt-in via `-tags ocrrs_cuda`            |
+| darwin  | amd64  | CPU + OpenCL + Vulkan + Metal + CoreML                                               |
+| darwin  | arm64  | CPU + OpenCL + Vulkan + Metal + CoreML                                               |
+| windows | amd64  | CPU + OpenCL + Vulkan (MSVC only)                                                    |
+| windows | amd64  | CPU + OpenCL + Vulkan + **CUDA** — opt-in via `-tags ocrrs_cuda`, MSVC required      |
 
 The Linux archive is produced inside an Ubuntu 18.04 container, so the
 resulting binaries link cleanly on every distro with glibc ≥ 2.27.
@@ -38,6 +40,38 @@ resulting binaries link cleanly on every distro with glibc ≥ 2.27.
 On Linux/macOS the OpenCL/Vulkan runtimes are `dlopen`'d at runtime by
 MNN — the static archive has no link-time dependency on them, so falling
 back to the CPU backend always works.
+
+Linux OpenGL is **not** dlopen'd: the static archive references libGL
+symbols directly, so consumers need `libgl1` (Mesa or proprietary) at
+link and run time. Desktop distros ship it by default; minimal server
+images usually do not — install `libgl1-mesa-glx` (or equivalent).
+
+### CUDA backend (Linux/amd64 and Windows/amd64)
+
+`BackendCUDA` is built into a *separate* prebuilt archive:
+
+* Linux:   `prebuilt/linux_amd64_cuda/libocr_rs_combined.a`
+* Windows: `prebuilt/windows_amd64_cuda/ocr_rs_combined.lib`
+
+Activate it by building your Go binary with the `ocrrs_cuda` build tag:
+
+```sh
+go build -tags ocrrs_cuda ./...
+```
+
+Calling `New(..., BackendCUDA)` without that tag returns an error
+asking you to rebuild with it. The CUDA variant **also** statically
+references CUDA Toolkit + cuDNN libraries (`-lcuda -lcudart -lcublas
+-lcudnn` on Linux, `cuda.lib cudart.lib cublas.lib cudnn.lib` on
+Windows), so:
+
+* The host doing the `go build` needs CUDA Toolkit + cuDNN dev libs.
+* The host running the binary needs matching runtime libs plus an
+  NVIDIA driver.
+
+If those aren't acceptable for your deployment, stick to the default
+variant — `BackendCPU` / `BackendOpenCL` / `BackendVulkan` still cover
+most workloads.
 
 ### Windows consumer requirements
 
@@ -114,7 +148,9 @@ Each script:
 
 | Platform | Tools required                                                                                            |
 |----------|-----------------------------------------------------------------------------------------------------------|
-| Linux    | gcc-8/g++-8, cmake ≥ 3.10, rustup, GNU `ar`/`ranlib`, `ocl-icd-opencl-dev`, `libvulkan-dev`               |
+| Linux    | gcc-8/g++-8, cmake ≥ 3.13, rustup, GNU `ar`/`ranlib`, clang+libclang-dev, `ocl-icd-opencl-dev`, `libvulkan-dev`, `libgl1-mesa-dev libglew-dev libegl1-mesa-dev` |
+| Linux CUDA | everything above **plus** CUDA Toolkit (nvcc, cudart, cublas) and cuDNN dev. Easiest in CI: build inside `nvidia/cuda:11.4.3-cudnn8-devel-ubuntu18.04` |
+| Windows CUDA | everything in the Windows row above **plus** CUDA Toolkit (Jimver/cuda-toolkit action) and the cuDNN Windows redistributable (`cudnn-windows-x86_64-8.9.7.29_cuda11-archive.zip` from `developer.download.nvidia.com`) |
 | macOS    | Xcode Command Line Tools (clang, libtool), rustup with `*-apple-darwin` targets                          |
 | Windows  | VS Build Tools (cl/link/lib/nmake on PATH), Vulkan SDK (LunarG), OpenCL.lib (e.g. vcpkg `opencl`), rustup w/ MSVC |
 

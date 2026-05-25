@@ -14,7 +14,7 @@ set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT="$(cd "$HERE/.." && pwd)"
 SHIM_DIR="$ROOT/ocr-rs-c"
-FEATURES="${OCRRS_FEATURES:-opencl vulkan metal}"
+FEATURES="${OCRRS_FEATURES:-opencl vulkan metal coreml}"
 
 host_triple="$(rustc -vV | awk '/host:/ {print $2}')"
 TARGET="${OCRRS_TARGET:-$host_triple}"

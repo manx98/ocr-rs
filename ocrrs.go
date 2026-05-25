@@ -113,7 +113,22 @@ func takeCError(cErr *C.char, prefix string) error {
 //   - backend:     inference backend
 //
 // All three files must exist when called.
+//
+// Backend special cases:
+//
+//   - BackendCUDA   — only available when the package is built with
+//     `-tags ocrrs_cuda` on linux/amd64; otherwise New returns an error
+//     asking the caller to rebuild with that tag (and pointing out the
+//     CUDA Toolkit + cuDNN runtime requirement).
 func New(detPath, recPath, charsetPath string, backend Backend) (*Engine, error) {
+	if backend == BackendCUDA && !cudaEnabled {
+		return nil, errors.New(
+			"ocrrs: CUDA backend not enabled in this build — " +
+				"rebuild with `-tags ocrrs_cuda` (linux/amd64 or windows/amd64); " +
+				"that variant also requires CUDA Toolkit + cuDNN at link and run time",
+		)
+	}
+
 	cDet := C.CString(detPath)
 	defer C.free(unsafe.Pointer(cDet))
 	cRec := C.CString(recPath)
