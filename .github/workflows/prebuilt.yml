@@ -149,13 +149,25 @@ jobs:
           path: prebuilt/windows_amd64/ocr_rs_combined.lib
 
   # ---------------------------------------------------------------------------
-  # Optional: collect all artifacts and (re)publish a single archive.
+  # Collect every per-platform artifact into prebuilt/, commit it back to the
+  # branch the workflow was dispatched from, and also upload a combined
+  # workflow artifact for download.
   # ---------------------------------------------------------------------------
   bundle:
     needs: [linux-amd64, macos, windows-amd64]
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
+        with:
+          # The default GITHUB_TOKEN is enough to push to the same repo
+          # provided `permissions.contents: write` is granted above.
+          token: ${{ secrets.GITHUB_TOKEN }}
+          ref: ${{ github.ref }}
+          # `actions/checkout` defaults to a shallow clone; we need full
+          # history so the push is a fast-forward.
+          fetch-depth: 0
       - uses: actions/download-artifact@v4
         with:
           pattern: prebuilt-*
@@ -167,10 +179,26 @@ jobs:
               name="${d##*/prebuilt-}"
               mkdir -p "prebuilt/$name"
               # Each artifact dir contains a single libocr_rs_combined.a
-              # (.lib on Windows). Copy whatever is in it.
+              # (.lib on Windows). Replace the whole directory contents so
+              # stale .gitkeep placeholders get cleaned up.
+              rm -f "prebuilt/$name/.gitkeep"
               cp "$d"/* "prebuilt/$name/"
           done
           ls -la prebuilt/*/
+      - name: Commit refreshed archives back to ${{ github.ref_name }}
+        env:
+          BRANCH: ${{ github.ref_name }}
+        run: |
+          set -eux
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add prebuilt/
+          if git diff --cached --quiet; then
+              echo "No prebuilt changes — skipping commit."
+              exit 0
+          fi
+          git commit -m "ci: refresh prebuilt archives [skip ci]"
+          git push origin "HEAD:${BRANCH}"
       - uses: actions/upload-artifact@v4
         with:
           name: prebuilt-all
