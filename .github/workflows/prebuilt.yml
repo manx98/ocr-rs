@@ -50,12 +50,14 @@ jobs:
                   > /etc/apt/sources.list.d/kitware.list
               apt-get update
               apt-get install -y --no-install-recommends cmake
-              # gcc-8 for C++17 in MNN (default 18.04 gcc is 7)
+              # gcc-10 required: C++17 for MNN (default 18.04 gcc is 7) AND
+              # ARM64 KleidiAI backend uses -march modifiers (+i8mm, +sve2)
+              # that gcc-8 rejects; gcc-10 is the minimum that accepts them.
               add-apt-repository -y ppa:ubuntu-toolchain-r/test
               apt-get update
-              apt-get install -y --no-install-recommends gcc-8 g++-8
-              update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-8 80 \
-                  --slave /usr/bin/g++ g++ /usr/bin/g++-8
+              apt-get install -y --no-install-recommends gcc-10 g++-10
+              update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-10 80 \
+                  --slave /usr/bin/g++ g++ /usr/bin/g++-10
               # rustup
               curl -fsSL https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain stable
               export PATH="$HOME/.cargo/bin:$PATH"
