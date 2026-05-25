@@ -37,6 +37,13 @@ if (-not $linkExe) {
 $env:CARGO_TARGET_X86_64_PC_WINDOWS_MSVC_LINKER = $linkExe
 Write-Host "MSVC link.exe = $linkExe"
 
+# Point cmake at our size-tuned toolchain fragment so MNN gets compiled
+# with /Os /Ob1 /Gw /Gy /Brepro instead of the default /O2 /Ob2 — the
+# default settings produce a 600+ MB combined .lib, the size-tuned ones
+# should land us closer to a few hundred MB.
+$env:CMAKE_TOOLCHAIN_FILE = Join-Path $here 'msvc_size.cmake'
+Write-Host "CMAKE_TOOLCHAIN_FILE = $env:CMAKE_TOOLCHAIN_FILE"
+
 if (Get-Command rustup -ErrorAction SilentlyContinue) {
     rustup target add $target | Out-Null
 }
