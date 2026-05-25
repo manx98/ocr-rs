@@ -115,19 +115,17 @@ jobs:
         with:
           arch: x64
       - name: Install Vulkan SDK
-        uses: humbletim/setup-vulkan-sdk@v1.2.0
-        with:
-          vulkan-query-version: 1.3.250.1
-          vulkan-components: Vulkan-Headers, Vulkan-Loader
-          vulkan-use-cache: true
-      - name: Alias vulkan-1.lib to vulkan.lib
         shell: pwsh
         run: |
-          $src = Join-Path $env:VULKAN_SDK "Lib\vulkan-1.lib"
-          $dst = Join-Path $env:VULKAN_SDK "Lib\vulkan.lib"
-          if (-not (Test-Path $dst)) { Copy-Item $src $dst }
-          "LIB=$env:VULKAN_SDK\Lib;$env:LIB" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
-          "INCLUDE=$env:VULKAN_SDK\Include;$env:INCLUDE" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          choco install vulkan-sdk -y --no-progress
+          $vulkanRoot = (Get-ChildItem "C:\VulkanSDK" | Sort-Object Name -Descending | Select-Object -First 1).FullName
+          # ocr-rs's build.rs emits `cargo:rustc-link-lib=vulkan`, but LunarG
+          # ships the import lib as vulkan-1.lib. Alias it so link.exe finds
+          # the expected name.
+          Copy-Item "$vulkanRoot\Lib\vulkan-1.lib" "$vulkanRoot\Lib\vulkan.lib" -Force
+          "VULKAN_SDK=$vulkanRoot" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "LIB=$vulkanRoot\Lib;$env:LIB" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "INCLUDE=$vulkanRoot\Include;$env:INCLUDE" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
       - name: Install OpenCL via vcpkg
         shell: pwsh
         run: |
