@@ -104,22 +104,25 @@ jobs:
           path: prebuilt/linux_amd64_cuda/libocr_rs_combined.a
 
   # ---------------------------------------------------------------------------
-  # macOS: build both Intel and Apple-silicon variants on macos-14 (arm host).
+  # macOS: build each arch on a runner matching that arch — otherwise
+  # cross-compiling for x86_64 on the arm `macos-14` runner picks up the
+  # arm64 brew bottles (libvulkan etc.) and the linker rejects them.
   #
-  # The `ocr-rs` crate also builds a side cdylib (which we do not consume) and
-  # that cdylib's link line includes `-lvulkan`. Vulkan is not native on
-  # macOS; Homebrew's vulkan-loader / molten-vk satisfy it at build time.
+  # ocr-rs also builds a side cdylib whose link line includes `-lvulkan`;
+  # Homebrew's vulkan-loader + molten-vk satisfy it at build time.
   # ---------------------------------------------------------------------------
   macos:
-    runs-on: macos-14
+    runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: false
       matrix:
         include:
           - target: x86_64-apple-darwin
             goarch: amd64
+            runner: macos-13
           - target: aarch64-apple-darwin
             goarch: arm64
+            runner: macos-14
     steps:
       - uses: actions/checkout@v4
       - name: Install Vulkan loader (build-time only)
@@ -227,7 +230,9 @@ jobs:
         with:
           cuda: '11.8.0'
           method: network
-          sub-packages: '["nvcc", "cudart", "cublas", "cudart_dev", "cublas_dev", "thrust", "visual_studio_integration"]'
+          # Skip visual_studio_integration: it tries to register with VS and
+          # fails on hosted runners with exit code 3772776473 (0xE0C77019).
+          sub-packages: '["nvcc", "cudart", "cudart_dev", "cublas", "cublas_dev", "thrust"]'
       - name: Install cuDNN (NVIDIA redistributable)
         shell: pwsh
         run: |

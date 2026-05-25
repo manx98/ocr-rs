@@ -19,7 +19,7 @@ package ocrrs
 #cgo darwin,amd64 LDFLAGS: ${SRCDIR}/prebuilt/darwin_amd64/libocr_rs_combined.a -lc++ -ldl -lm -lpthread -lobjc
 #cgo darwin,amd64 LDFLAGS: -framework Foundation -framework CoreFoundation -framework CoreGraphics
 #cgo darwin,amd64 LDFLAGS: -framework Metal -framework MetalKit -framework MetalPerformanceShaders
-#cgo darwin,amd64 LDFLAGS: -framework OpenCL -framework CoreML
+#cgo darwin,amd64 LDFLAGS: -framework OpenCL -framework CoreML -framework CoreVideo
 #cgo darwin,amd64 LDFLAGS: -framework Accelerate -framework IOKit
 */
 import "C"

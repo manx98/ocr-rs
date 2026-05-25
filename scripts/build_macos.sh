@@ -34,6 +34,12 @@ rustup target add "$TARGET" >/dev/null
 RELEASE_DIR="$SHIM_DIR/target/$TARGET/release"
 OUTPUT_DIR="$ROOT/prebuilt/darwin_${GO_ARCH}"
 
+# ocr-rs's build.rs forgets to emit `cargo:rustc-link-lib=framework=CoreVideo`
+# when the coreml feature is on, even though MNN's CoreMLExecutor.mm calls
+# CVPixelBuffer* (which lives in CoreVideo). Inject the missing link
+# directive via RUSTFLAGS so it applies to ocr-rs's cdylib link step too.
+export RUSTFLAGS="${RUSTFLAGS:-} -l framework=CoreVideo"
+
 cd "$SHIM_DIR"
 echo "==> cargo build --release --target $TARGET --features '$FEATURES'"
 cargo build --release --target "$TARGET" --features "$FEATURES"
