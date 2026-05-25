@@ -12,12 +12,21 @@ jobs:
   #
   # We deliberately do NOT use the workflow's `container:` field, because the
   # runner injects a node20 binary that requires GLIBC_2.28 — which 18.04
-  # does not have. Instead, keep all GitHub action helpers (checkout,
+  # does not have. Instead keep all GitHub action helpers (checkout,
   # upload-artifact) on the host runner, and only the cargo build runs in
-  # the ubuntu:18.04 container.
+  # the ubuntu:18.04 container. Same docker image works for both arches —
+  # ubuntu:18.04 publishes amd64 and arm64 manifests.
   # ---------------------------------------------------------------------------
-  linux-amd64:
-    runs-on: ubuntu-latest
+  linux:
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - goarch: amd64
+            runner: ubuntu-latest
+          - goarch: arm64
+            runner: ubuntu-24.04-arm
     steps:
       - uses: actions/checkout@v4
       - name: Build inside ubuntu:18.04
@@ -52,10 +61,12 @@ jobs:
               export PATH="$HOME/.cargo/bin:$PATH"
               bash scripts/build_linux.sh
             '
+      - name: Verify archive arch
+        run: file "prebuilt/linux_${{ matrix.goarch }}/libocr_rs_combined.a" | head -3
       - uses: actions/upload-artifact@v4
         with:
-          name: prebuilt-linux_amd64
-          path: prebuilt/linux_amd64/libocr_rs_combined.a
+          name: prebuilt-linux_${{ matrix.goarch }}
+          path: prebuilt/linux_${{ matrix.goarch }}/libocr_rs_combined.a
 
   # ---------------------------------------------------------------------------
   # macOS: both arch variants are built on macos-14 (arm host).
@@ -128,7 +139,7 @@ jobs:
   # workflow artifact for download.
   # ---------------------------------------------------------------------------
   bundle:
-    needs: [linux-amd64, macos]
+    needs: [linux, macos]
     runs-on: ubuntu-latest
     permissions:
       contents: write
