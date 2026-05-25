@@ -235,7 +235,11 @@ jobs:
           # Listing cudart_dev caused exit 3772776473 (0xE0C77019). Also
           # skip visual_studio_integration: it tries to register with VS
           # and fails on hosted runners.
-          sub-packages: '["nvcc", "cudart", "cublas", "cublas_dev", "thrust"]'
+          #
+          # cusolver/cusparse + their _dev sibs are needed because MNN's
+          # CUDARuntime.hpp includes cusolverDn.h and calls cuSOLVER Dense
+          # entry points (which in turn pull cuSPARSE).
+          sub-packages: '["nvcc", "cudart", "cublas", "cublas_dev", "cusolver", "cusolver_dev", "cusparse", "cusparse_dev", "thrust"]'
       - name: Dump CUDA installer log on failure
         if: failure()
         shell: pwsh

@@ -15,5 +15,5 @@ package ocrrs
 //   apt install nvidia-cuda-toolkit libcudnn8-dev  (Debian/Ubuntu)
 //   or use the official NVIDIA repo packages.
 
-// #cgo linux,amd64 LDFLAGS: ${SRCDIR}/prebuilt/linux_amd64_cuda/libocr_rs_combined.a -lstdc++ -ldl -lm -lpthread -lGL -lcuda -lcudart -lcublas -lcudnn
+// #cgo linux,amd64 LDFLAGS: ${SRCDIR}/prebuilt/linux_amd64_cuda/libocr_rs_combined.a -lstdc++ -ldl -lm -lpthread -lGL -lcuda -lcudart -lcublas -lcudnn -lcusolver -lcusparse
 import "C"

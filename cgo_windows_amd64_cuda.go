@@ -16,6 +16,6 @@ package ocrrs
 #cgo windows,amd64 LDFLAGS: ${SRCDIR}/prebuilt/windows_amd64_cuda/ocr_rs_combined.lib
 #cgo windows,amd64 LDFLAGS: ws2_32.lib userenv.lib bcrypt.lib advapi32.lib
 #cgo windows,amd64 LDFLAGS: ole32.lib oleaut32.lib uuid.lib psapi.lib shell32.lib
-#cgo windows,amd64 LDFLAGS: cuda.lib cudart.lib cublas.lib cudnn.lib
+#cgo windows,amd64 LDFLAGS: cuda.lib cudart.lib cublas.lib cudnn.lib cusolver.lib cusparse.lib
 */
 import "C"
