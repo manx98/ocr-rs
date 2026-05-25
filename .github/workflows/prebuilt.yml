@@ -58,34 +58,54 @@ jobs:
           path: prebuilt/linux_amd64/libocr_rs_combined.a
 
   # ---------------------------------------------------------------------------
-  # macOS: build each arch on a runner matching that arch — otherwise
-  # cross-compiling for x86_64 on the arm `macos-14` runner picks up the
-  # arm64 brew bottles (libvulkan etc.) and the linker rejects them.
+  # macOS: both arch variants are built on macos-14 (arm host).
   #
-  # ocr-rs also builds a side cdylib whose link line includes `-lvulkan`;
-  # Homebrew's vulkan-loader + molten-vk satisfy it at build time.
+  # The arm64 target builds natively against /opt/homebrew bottles. The
+  # x86_64 target cross-compiles under Rosetta and links against a
+  # parallel x86_64 Homebrew install at /usr/local — that's the only way
+  # to get an x86_64 libvulkan.dylib now that macos-13 free runners are
+  # gone.
+  #
+  # ocr-rs's side cdylib pulls -lvulkan into the link line; Homebrew's
+  # vulkan-loader + molten-vk satisfy it at build time. CPU/OpenCL/Metal
+  # /CoreML do not need any extra install.
   # ---------------------------------------------------------------------------
   macos:
-    runs-on: ${{ matrix.runner }}
+    runs-on: macos-14
     strategy:
       fail-fast: false
       matrix:
         include:
           - target: x86_64-apple-darwin
             goarch: amd64
-            runner: macos-13
           - target: aarch64-apple-darwin
             goarch: arm64
-            runner: macos-14
     steps:
       - uses: actions/checkout@v4
+      - name: Install Rosetta 2 (x86_64 target only)
+        if: matrix.target == 'x86_64-apple-darwin'
+        run: softwareupdate --install-rosetta --agree-to-license
       - name: Install Vulkan loader (build-time only)
         run: |
-          brew update --quiet
-          brew install vulkan-headers vulkan-loader molten-vk
-          brew_prefix="$(brew --prefix)"
-          echo "LIBRARY_PATH=${brew_prefix}/lib:${LIBRARY_PATH:-}" >> $GITHUB_ENV
-          echo "CPATH=${brew_prefix}/include:${CPATH:-}" >> $GITHUB_ENV
+          set -eux
+          if [[ "${{ matrix.target }}" == "x86_64-apple-darwin" ]]; then
+              # Bootstrap an x86_64 Homebrew at /usr/local so brew bottles
+              # are x86_64 Mach-O, then install vulkan there.
+              if [ ! -x /usr/local/bin/brew ]; then
+                  arch -x86_64 /bin/bash -c \
+                      "NONINTERACTIVE=1 $(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+              fi
+              arch -x86_64 /usr/local/bin/brew update --quiet
+              arch -x86_64 /usr/local/bin/brew install vulkan-headers vulkan-loader molten-vk
+              echo "LIBRARY_PATH=/usr/local/lib:${LIBRARY_PATH:-}" >> $GITHUB_ENV
+              echo "CPATH=/usr/local/include:${CPATH:-}" >> $GITHUB_ENV
+          else
+              brew update --quiet
+              brew install vulkan-headers vulkan-loader molten-vk
+              brew_prefix="$(brew --prefix)"
+              echo "LIBRARY_PATH=${brew_prefix}/lib:${LIBRARY_PATH:-}" >> $GITHUB_ENV
+              echo "CPATH=${brew_prefix}/include:${CPATH:-}" >> $GITHUB_ENV
+          fi
       - name: Install Rust toolchain
         run: |
           rustup toolchain install stable --profile minimal
@@ -94,6 +114,9 @@ jobs:
         env:
           OCRRS_TARGET: ${{ matrix.target }}
         run: bash scripts/build_macos.sh
+      - name: Verify archive arch
+        run: |
+          file "prebuilt/darwin_${{ matrix.goarch }}/libocr_rs_combined.a" | head -3
       - uses: actions/upload-artifact@v4
         with:
           name: prebuilt-darwin_${{ matrix.goarch }}
