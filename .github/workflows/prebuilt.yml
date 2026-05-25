@@ -32,6 +32,7 @@ jobs:
               apt-get install -y --no-install-recommends \
                   ca-certificates curl git build-essential pkg-config \
                   software-properties-common gnupg \
+                  clang libclang-dev \
                   ocl-icd-opencl-dev libvulkan-dev
               # cmake >= 3.18 from Kitware (default 18.04 cmake is 3.10)
               curl -fsSL https://apt.kitware.com/keys/kitware-archive-latest.asc \
@@ -96,38 +97,58 @@ jobs:
           path: prebuilt/darwin_${{ matrix.goarch }}/libocr_rs_combined.a
 
   # ---------------------------------------------------------------------------
-  # Windows: x86_64-pc-windows-gnu via MSYS2 / MinGW-w64. We use the MSYS2
-  # `mingw-w64-x86_64-rust` package (whose default host is already
-  # x86_64-pc-windows-gnu) — no rustup at all, which sidesteps the previous
-  # rustup-init "--default-host used multiple times" failure.
+  # Windows: x86_64-pc-windows-msvc.
+  #
+  # ocr-rs's build.rs hard-codes a "NMake Makefiles" CMake generator and
+  # MSVC-only /MT/MD flags, so the MinGW path is not viable. We go MSVC
+  # end-to-end: vcvars set up via ilammy/msvc-dev-cmd, Vulkan SDK from
+  # LunarG (provides vulkan-1.lib + headers), OpenCL.lib from vcpkg.
+  # ocr-rs emits `cargo:rustc-link-lib=vulkan`, but the LunarG SDK ships
+  # the lib as vulkan-1.lib, so we add a vulkan.lib alias.
   # ---------------------------------------------------------------------------
   windows-amd64:
     runs-on: windows-latest
-    defaults:
-      run:
-        shell: msys2 {0}
     steps:
       - uses: actions/checkout@v4
-      - uses: msys2/setup-msys2@v2
+      - name: Set up MSVC environment
+        uses: ilammy/msvc-dev-cmd@v1
         with:
-          msystem: MINGW64
-          update: true
-          install: >-
-            base-devel git
-            mingw-w64-x86_64-toolchain
-            mingw-w64-x86_64-cmake
-            mingw-w64-x86_64-ninja
-            mingw-w64-x86_64-rust
-            mingw-w64-x86_64-opencl-headers
-            mingw-w64-x86_64-opencl-icd
-            mingw-w64-x86_64-vulkan-headers
-            mingw-w64-x86_64-vulkan-loader
+          arch: x64
+      - name: Install Vulkan SDK
+        uses: humbletim/setup-vulkan-sdk@v1.2.0
+        with:
+          vulkan-query-version: 1.3.250.1
+          vulkan-components: Vulkan-Headers, Vulkan-Loader
+          vulkan-use-cache: true
+      - name: Alias vulkan-1.lib to vulkan.lib
+        shell: pwsh
+        run: |
+          $src = Join-Path $env:VULKAN_SDK "Lib\vulkan-1.lib"
+          $dst = Join-Path $env:VULKAN_SDK "Lib\vulkan.lib"
+          if (-not (Test-Path $dst)) { Copy-Item $src $dst }
+          "LIB=$env:VULKAN_SDK\Lib;$env:LIB" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "INCLUDE=$env:VULKAN_SDK\Include;$env:INCLUDE" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+      - name: Install OpenCL via vcpkg
+        shell: pwsh
+        run: |
+          vcpkg install opencl:x64-windows
+          $ocl_lib = "C:\vcpkg\installed\x64-windows\lib"
+          $ocl_inc = "C:\vcpkg\installed\x64-windows\include"
+          "LIB=$ocl_lib;$env:LIB" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "INCLUDE=$ocl_inc;$env:INCLUDE" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+      - name: Install Rust toolchain (msvc)
+        shell: pwsh
+        run: |
+          rustup toolchain install stable-x86_64-pc-windows-msvc --profile minimal
+          rustup default stable-x86_64-pc-windows-msvc
+          rustup target add x86_64-pc-windows-msvc
       - name: Build
+        shell: bash
         run: bash scripts/build_windows.sh
       - uses: actions/upload-artifact@v4
         with:
           name: prebuilt-windows_amd64
-          path: prebuilt/windows_amd64/libocr_rs_combined.a
+          path: prebuilt/windows_amd64/ocr_rs_combined.lib
 
   # ---------------------------------------------------------------------------
   # Optional: collect all artifacts and (re)publish a single archive.
@@ -147,10 +168,14 @@ jobs:
           for d in prebuilt-dl/prebuilt-*; do
               name="${d##*/prebuilt-}"
               mkdir -p "prebuilt/$name"
-              cp "$d/libocr_rs_combined.a" "prebuilt/$name/"
+              # Each artifact dir contains a single libocr_rs_combined.a
+              # (.lib on Windows). Copy whatever is in it.
+              cp "$d"/* "prebuilt/$name/"
           done
           ls -la prebuilt/*/
       - uses: actions/upload-artifact@v4
         with:
           name: prebuilt-all
-          path: prebuilt/**/libocr_rs_combined.a
+          path: |
+            prebuilt/**/libocr_rs_combined.a
+            prebuilt/**/ocr_rs_combined.lib

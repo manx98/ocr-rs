@@ -3,10 +3,12 @@
 Go bindings for the Rust [`ocr-rs`](https://docs.rs/ocr-rs/) crate (PaddleOCR
 text detection + recognition via MNN).
 
-The repository ships **per-platform prebuilt static archives** at
-`prebuilt/<os>_<arch>/libocr_rs_combined.a`, so end users do **not** need a
-Rust toolchain, MNN install, or any other native dependency — `go get` and
-`go build` are enough.
+The repository ships **per-platform prebuilt static archives** under
+`prebuilt/<os>_<arch>/` (`.a` everywhere except Windows, where it is a
+MSVC-format `.lib`), so end users do **not** need a Rust toolchain, MNN
+install, or any other native dependency — `go get` and `go build` are
+enough on Linux/macOS. Windows consumers need an MSVC environment (see
+below).
 
 ```go
 import ocrrs "github.com/manx98/ocr-rs"
@@ -28,14 +30,30 @@ for _, r := range out.Results {
 | linux   | amd64  | CPU + OpenCL + Vulkan             |
 | darwin  | amd64  | CPU + OpenCL + Vulkan + Metal     |
 | darwin  | arm64  | CPU + OpenCL + Vulkan + Metal     |
-| windows | amd64  | CPU + OpenCL + Vulkan             |
+| windows | amd64  | CPU + OpenCL + Vulkan (MSVC only) |
 
 The Linux archive is produced inside an Ubuntu 18.04 container, so the
 resulting binaries link cleanly on every distro with glibc ≥ 2.27.
 
-OpenCL/Vulkan runtimes are `dlopen`'d at runtime by MNN — the static
-archive itself has no link-time dependency on them, so falling back to the
-CPU backend always works.
+On Linux/macOS the OpenCL/Vulkan runtimes are `dlopen`'d at runtime by
+MNN — the static archive has no link-time dependency on them, so falling
+back to the CPU backend always works.
+
+### Windows consumer requirements
+
+The Windows prebuilt is MSVC-format because `ocr-rs` upstream hard-codes
+an `NMake Makefiles` CMake generator plus MSVC-only compiler flags (no
+MinGW path). To build a Go program against it:
+
+1. Install **Visual Studio Build Tools** (Desktop development with C++).
+2. Open a *Developer Command Prompt* (or run `vcvars64.bat`) so cl.exe,
+   link.exe and lib.exe are on `PATH`.
+3. Set `CC=cl` (and optionally `CXX=cl`) before `go build` — this makes
+   cgo use the MSVC driver instead of its default MinGW gcc.
+
+At runtime, OpenCL.dll and vulkan-1.dll must be reachable (both come
+bundled with current NVIDIA/AMD/Intel GPU drivers). With neither
+present, only `BackendCPU` is functional.
 
 ## Layout
 
@@ -98,7 +116,7 @@ Each script:
 |----------|-----------------------------------------------------------------------------------------------------------|
 | Linux    | gcc-8/g++-8, cmake ≥ 3.10, rustup, GNU `ar`/`ranlib`, `ocl-icd-opencl-dev`, `libvulkan-dev`               |
 | macOS    | Xcode Command Line Tools (clang, libtool), rustup with `*-apple-darwin` targets                          |
-| Windows  | MSYS2 MINGW64: `mingw-w64-x86_64-{toolchain,cmake,ninja,opencl-{headers,icd},vulkan-{headers,loader}}`    |
+| Windows  | VS Build Tools (cl/link/lib/nmake on PATH), Vulkan SDK (LunarG), OpenCL.lib (e.g. vcpkg `opencl`), rustup w/ MSVC |
 
 > The OpenCL / Vulkan dev packages only satisfy the *build-time* linker for
 > `ocr-rs`'s side-cdylib; the static archive we ship has no link-time
