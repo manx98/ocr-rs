@@ -1,0 +1,14 @@
+# Rust build artifacts
+ocr-rs-c/target/
+
+# Go build artifacts
+examples/ocr-example
+examples/ocr-example.exe
+*.test
+*.out
+
+# Editor / OS junk
+.DS_Store
+*.swp
+.vscode/
+.idea/

@@ -1,0 +1,141 @@
+name: build-prebuilt
+
+# Builds prebuilt/<os>_<arch>/libocr_rs_combined.a for every supported target
+# and uploads them as workflow artifacts. Trigger manually, or on a tag push.
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Linux: build inside an Ubuntu 18.04 container so the archive only requires
+  # glibc 2.27 at link time.
+  # ---------------------------------------------------------------------------
+  linux-amd64:
+    runs-on: ubuntu-latest
+    container:
+      image: ubuntu:18.04
+    steps:
+      - name: Install build dependencies
+        run: |
+          set -eux
+          export DEBIAN_FRONTEND=noninteractive
+          apt-get update
+          apt-get install -y --no-install-recommends \
+              ca-certificates curl git build-essential pkg-config \
+              software-properties-common gnupg
+          # cmake >= 3.18 (MNN needs >= 3.10, ocr-rs prefers newer)
+          curl -fsSL https://apt.kitware.com/keys/kitware-archive-latest.asc \
+              | gpg --dearmor -o /usr/share/keyrings/kitware-archive.gpg
+          echo 'deb [signed-by=/usr/share/keyrings/kitware-archive.gpg] https://apt.kitware.com/ubuntu/ bionic main' \
+              > /etc/apt/sources.list.d/kitware.list
+          apt-get update
+          apt-get install -y --no-install-recommends cmake
+          # gcc-8 for C++17 in MNN
+          add-apt-repository -y ppa:ubuntu-toolchain-r/test
+          apt-get update
+          apt-get install -y --no-install-recommends gcc-8 g++-8
+          update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-8 80 \
+              --slave /usr/bin/g++ g++ /usr/bin/g++-8
+      - uses: actions/checkout@v4
+      - name: Install Rust
+        run: |
+          curl -fsSL https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain stable
+          echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+      - name: Build
+        run: bash scripts/build_linux.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: prebuilt-linux_amd64
+          path: prebuilt/linux_amd64/libocr_rs_combined.a
+
+  # ---------------------------------------------------------------------------
+  # macOS: build both Intel and Apple-silicon variants on macos-14 (arm host).
+  # ---------------------------------------------------------------------------
+  macos:
+    runs-on: macos-14
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86_64-apple-darwin
+            goarch: amd64
+          - target: aarch64-apple-darwin
+            goarch: arm64
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Rust toolchain
+        run: |
+          rustup toolchain install stable --profile minimal
+          rustup target add ${{ matrix.target }}
+      - name: Build
+        env:
+          OCRRS_TARGET: ${{ matrix.target }}
+        run: bash scripts/build_macos.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: prebuilt-darwin_${{ matrix.goarch }}
+          path: prebuilt/darwin_${{ matrix.goarch }}/libocr_rs_combined.a
+
+  # ---------------------------------------------------------------------------
+  # Windows: x86_64-pc-windows-gnu via MSYS2 / MinGW-w64, matching cgo's default.
+  # ---------------------------------------------------------------------------
+  windows-amd64:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: msys2 {0}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          update: true
+          install: >-
+            base-devel git
+            mingw-w64-x86_64-toolchain
+            mingw-w64-x86_64-cmake
+            mingw-w64-x86_64-ninja
+      - name: Install Rust (MSYS2 shell)
+        run: |
+          curl -fsSL https://sh.rustup.rs -o rustup.sh
+          sh rustup.sh -y --profile minimal --default-toolchain stable --default-host x86_64-pc-windows-gnu
+          echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+          export PATH="$HOME/.cargo/bin:$PATH"
+          rustup target add x86_64-pc-windows-gnu
+      - name: Build
+        run: |
+          export PATH="$HOME/.cargo/bin:$PATH"
+          bash scripts/build_windows.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: prebuilt-windows_amd64
+          path: prebuilt/windows_amd64/libocr_rs_combined.a
+
+  # ---------------------------------------------------------------------------
+  # Optional: collect all artifacts and (re)publish a single archive.
+  # ---------------------------------------------------------------------------
+  bundle:
+    needs: [linux-amd64, macos, windows-amd64]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: prebuilt-*
+          path: prebuilt-dl
+      - name: Lay out into prebuilt/
+        run: |
+          set -eux
+          for d in prebuilt-dl/prebuilt-*; do
+              name="${d##*/prebuilt-}"
+              mkdir -p "prebuilt/$name"
+              cp "$d/libocr_rs_combined.a" "prebuilt/$name/"
+          done
+          ls -la prebuilt/*/
+      - uses: actions/upload-artifact@v4
+        with:
+          name: prebuilt-all
+          path: prebuilt/**/libocr_rs_combined.a
