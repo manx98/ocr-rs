@@ -1,8 +1,8 @@
-//go:build windows && amd64 && !ocrrs_cuda
+//go:build windows && amd64
 
 package ocrrs
 
-// Default Windows/amd64 variant: CPU + OpenCL + Vulkan, MSVC linkage.
+// Windows/amd64: CPU + OpenCL + Vulkan, MSVC linkage.
 //
 // Consumers must build with the MSVC toolchain:
 //   - Install Visual Studio Build Tools (Desktop C++)

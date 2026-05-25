@@ -33,8 +33,7 @@ jobs:
                   ca-certificates curl git build-essential pkg-config \
                   software-properties-common gnupg \
                   clang libclang-dev \
-                  ocl-icd-opencl-dev libvulkan-dev \
-                  libgl1-mesa-dev libglew-dev libegl1-mesa-dev
+                  ocl-icd-opencl-dev libvulkan-dev
               # cmake >= 3.18 from Kitware (default 18.04 cmake is 3.10)
               curl -fsSL https://apt.kitware.com/keys/kitware-archive-latest.asc \
                   | gpg --dearmor -o /usr/share/keyrings/kitware-archive.gpg
@@ -57,51 +56,6 @@ jobs:
         with:
           name: prebuilt-linux_amd64
           path: prebuilt/linux_amd64/libocr_rs_combined.a
-
-  # ---------------------------------------------------------------------------
-  # Linux CUDA variant: same as above + the cuda feature. Built inside the
-  # NVIDIA cuda+cudnn devel image so cuda/cublas/cudart/cudnn .so's resolve.
-  # The image is based on ubuntu:18.04, preserving the glibc 2.27 floor.
-  # ---------------------------------------------------------------------------
-  linux-amd64-cuda:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Build inside nvidia/cuda:11.4.3-cudnn8-devel-ubuntu18.04
-        run: |
-          set -eux
-          docker run --rm \
-            -v "$PWD":/work -w /work \
-            -e DEBIAN_FRONTEND=noninteractive \
-            -e OCRRS_VARIANT=cuda \
-            nvidia/cuda:11.4.3-cudnn8-devel-ubuntu18.04 bash -c '
-              set -eux
-              apt-get update
-              apt-get install -y --no-install-recommends \
-                  ca-certificates curl git build-essential pkg-config \
-                  software-properties-common gnupg \
-                  clang libclang-dev \
-                  ocl-icd-opencl-dev libvulkan-dev \
-                  libgl1-mesa-dev libglew-dev libegl1-mesa-dev
-              curl -fsSL https://apt.kitware.com/keys/kitware-archive-latest.asc \
-                  | gpg --dearmor -o /usr/share/keyrings/kitware-archive.gpg
-              echo "deb [signed-by=/usr/share/keyrings/kitware-archive.gpg] https://apt.kitware.com/ubuntu/ bionic main" \
-                  > /etc/apt/sources.list.d/kitware.list
-              apt-get update
-              apt-get install -y --no-install-recommends cmake
-              add-apt-repository -y ppa:ubuntu-toolchain-r/test
-              apt-get update
-              apt-get install -y --no-install-recommends gcc-8 g++-8
-              update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-8 80 \
-                  --slave /usr/bin/g++ g++ /usr/bin/g++-8
-              curl -fsSL https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain stable
-              export PATH="$HOME/.cargo/bin:$PATH"
-              bash scripts/build_linux.sh
-            '
-      - uses: actions/upload-artifact@v4
-        with:
-          name: prebuilt-linux_amd64_cuda
-          path: prebuilt/linux_amd64_cuda/libocr_rs_combined.a
 
   # ---------------------------------------------------------------------------
   # macOS: build each arch on a runner matching that arch — otherwise
@@ -198,89 +152,12 @@ jobs:
           path: prebuilt/windows_amd64/ocr_rs_combined.lib
 
   # ---------------------------------------------------------------------------
-  # Windows CUDA variant: same MSVC story + CUDA Toolkit (via Jimver action)
-  # + cuDNN from NVIDIA's redistributable archive (no developer-account
-  # login required).
-  # ---------------------------------------------------------------------------
-  windows-amd64-cuda:
-    runs-on: windows-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Set up MSVC environment
-        uses: ilammy/msvc-dev-cmd@v1
-        with:
-          arch: x64
-      - name: Install Vulkan SDK
-        shell: pwsh
-        run: |
-          choco install vulkan-sdk -y --no-progress
-          $vulkanRoot = (Get-ChildItem "C:\VulkanSDK" | Sort-Object Name -Descending | Select-Object -First 1).FullName
-          Copy-Item "$vulkanRoot\Lib\vulkan-1.lib" "$vulkanRoot\Lib\vulkan.lib" -Force
-          "VULKAN_SDK=$vulkanRoot" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
-          "LIB=$vulkanRoot\Lib;$env:LIB"         | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
-          "INCLUDE=$vulkanRoot\Include;$env:INCLUDE" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
-      - name: Install OpenCL via vcpkg
-        shell: pwsh
-        run: |
-          vcpkg install opencl:x64-windows
-          "LIB=C:\vcpkg\installed\x64-windows\lib;$env:LIB"        | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
-          "INCLUDE=C:\vcpkg\installed\x64-windows\include;$env:INCLUDE" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
-      - name: Install CUDA Toolkit
-        uses: Jimver/cuda-toolkit@v0.2.16
-        with:
-          cuda: '11.8.0'
-          method: network
-          # In CUDA 11.8 the silent installer does not have a separate
-          # cudart_dev component (cudart already bundles runtime + headers).
-          # Listing cudart_dev caused exit 3772776473 (0xE0C77019). Also
-          # skip visual_studio_integration: it tries to register with VS
-          # and fails on hosted runners.
-          #
-          # cusolver/cusparse + their _dev sibs are needed because MNN's
-          # CUDARuntime.hpp includes cusolverDn.h and calls cuSOLVER Dense
-          # entry points (which in turn pull cuSPARSE).
-          sub-packages: '["nvcc", "cudart", "cublas", "cublas_dev", "cusolver", "cusolver_dev", "cusparse", "cusparse_dev", "thrust"]'
-      - name: Dump CUDA installer log on failure
-        if: failure()
-        shell: pwsh
-        run: |
-          Get-ChildItem "$env:TEMP" -Filter 'CUDA*.log' -ErrorAction SilentlyContinue | ForEach-Object {
-            Write-Host "===== $($_.FullName) ====="
-            Get-Content $_.FullName | Select-Object -Last 200
-          }
-      - name: Install cuDNN (NVIDIA redistributable)
-        shell: pwsh
-        run: |
-          $url = 'https://developer.download.nvidia.com/compute/cudnn/redist/cudnn/windows-x86_64/cudnn-windows-x86_64-8.9.7.29_cuda11-archive.zip'
-          Invoke-WebRequest -UseBasicParsing -Uri $url -OutFile cudnn.zip
-          Expand-Archive cudnn.zip -DestinationPath 'C:\cudnn' -Force
-          $cudnnRoot = (Get-ChildItem 'C:\cudnn' -Directory | Select-Object -First 1).FullName
-          "LIB=$cudnnRoot\lib\x64;$env:LIB"                  | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
-          "INCLUDE=$cudnnRoot\include;$env:INCLUDE"          | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
-          "$cudnnRoot\bin"                                    | Out-File -FilePath $env:GITHUB_PATH -Append -Encoding utf8
-      - name: Install Rust toolchain (msvc)
-        shell: pwsh
-        run: |
-          rustup toolchain install stable-x86_64-pc-windows-msvc --profile minimal
-          rustup default stable-x86_64-pc-windows-msvc
-          rustup target add x86_64-pc-windows-msvc
-      - name: Build
-        shell: pwsh
-        env:
-          OCRRS_VARIANT: cuda
-        run: scripts/build_windows.ps1
-      - uses: actions/upload-artifact@v4
-        with:
-          name: prebuilt-windows_amd64_cuda
-          path: prebuilt/windows_amd64_cuda/ocr_rs_combined.lib
-
-  # ---------------------------------------------------------------------------
   # Collect every per-platform artifact into prebuilt/, commit it back to the
   # branch the workflow was dispatched from, and also upload a combined
   # workflow artifact for download.
   # ---------------------------------------------------------------------------
   bundle:
-    needs: [linux-amd64, linux-amd64-cuda, macos, windows-amd64, windows-amd64-cuda]
+    needs: [linux-amd64, macos, windows-amd64]
     runs-on: ubuntu-latest
     permissions:
       contents: write

@@ -30,18 +30,17 @@ import (
 	"unsafe"
 )
 
-// Backend selects the MNN inference backend. The prebuilt archive must have
-// been compiled with the matching cargo feature for non-CPU choices to work.
+// Backend selects the MNN inference backend. The bundled prebuilt archives
+// support CPU + OpenCL + Vulkan on every target; macOS additionally
+// supports Metal and CoreML.
 type Backend int
 
 const (
 	BackendCPU    Backend = 0
 	BackendMetal  Backend = 1 // macOS only
 	BackendOpenCL Backend = 2
-	BackendOpenGL Backend = 3
 	BackendVulkan Backend = 4
-	BackendCUDA   Backend = 5 // not bundled in the shipped prebuilt archives
-	BackendCoreML Backend = 6 // not bundled in the shipped prebuilt archives
+	BackendCoreML Backend = 6 // macOS only
 )
 
 func (b Backend) String() string {
@@ -52,12 +51,8 @@ func (b Backend) String() string {
 		return "Metal"
 	case BackendOpenCL:
 		return "OpenCL"
-	case BackendOpenGL:
-		return "OpenGL"
 	case BackendVulkan:
 		return "Vulkan"
-	case BackendCUDA:
-		return "CUDA"
 	case BackendCoreML:
 		return "CoreML"
 	default:
@@ -113,22 +108,7 @@ func takeCError(cErr *C.char, prefix string) error {
 //   - backend:     inference backend
 //
 // All three files must exist when called.
-//
-// Backend special cases:
-//
-//   - BackendCUDA   — only available when the package is built with
-//     `-tags ocrrs_cuda` on linux/amd64; otherwise New returns an error
-//     asking the caller to rebuild with that tag (and pointing out the
-//     CUDA Toolkit + cuDNN runtime requirement).
 func New(detPath, recPath, charsetPath string, backend Backend) (*Engine, error) {
-	if backend == BackendCUDA && !cudaEnabled {
-		return nil, errors.New(
-			"ocrrs: CUDA backend not enabled in this build — " +
-				"rebuild with `-tags ocrrs_cuda` (linux/amd64 or windows/amd64); " +
-				"that variant also requires CUDA Toolkit + cuDNN at link and run time",
-		)
-	}
-
 	cDet := C.CString(detPath)
 	defer C.free(unsafe.Pointer(cDet))
 	cRec := C.CString(recPath)
