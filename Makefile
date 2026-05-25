@@ -30,7 +30,7 @@ macos-arm64:
 	OCRRS_TARGET=aarch64-apple-darwin bash scripts/build_macos.sh
 
 windows:
-	bash scripts/build_windows.sh
+	pwsh -File scripts/build_windows.ps1
 
 example:
 	cd examples && $(GO) build -o ocr-example .
