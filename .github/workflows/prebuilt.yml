@@ -230,9 +230,20 @@ jobs:
         with:
           cuda: '11.8.0'
           method: network
-          # Skip visual_studio_integration: it tries to register with VS and
-          # fails on hosted runners with exit code 3772776473 (0xE0C77019).
-          sub-packages: '["nvcc", "cudart", "cudart_dev", "cublas", "cublas_dev", "thrust"]'
+          # In CUDA 11.8 the silent installer does not have a separate
+          # cudart_dev component (cudart already bundles runtime + headers).
+          # Listing cudart_dev caused exit 3772776473 (0xE0C77019). Also
+          # skip visual_studio_integration: it tries to register with VS
+          # and fails on hosted runners.
+          sub-packages: '["nvcc", "cudart", "cublas", "cublas_dev", "thrust"]'
+      - name: Dump CUDA installer log on failure
+        if: failure()
+        shell: pwsh
+        run: |
+          Get-ChildItem "$env:TEMP" -Filter 'CUDA*.log' -ErrorAction SilentlyContinue | ForEach-Object {
+            Write-Host "===== $($_.FullName) ====="
+            Get-Content $_.FullName | Select-Object -Last 200
+          }
       - name: Install cuDNN (NVIDIA redistributable)
         shell: pwsh
         run: |
