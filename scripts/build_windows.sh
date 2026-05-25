@@ -18,8 +18,12 @@ RELEASE_DIR="$SHIM_DIR/target/$TARGET/release"
 OUTPUT_DIR="$ROOT/prebuilt/windows_amd64"
 FEATURES="${OCRRS_FEATURES:-opencl vulkan}"
 
-# Ensure the toolchain has the requested target.
-rustup target add "$TARGET" >/dev/null
+# Ensure the toolchain has the requested target. With the MSYS2-native
+# `mingw-w64-x86_64-rust` package there is no rustup (the default host is
+# already x86_64-pc-windows-gnu), so silently skip.
+if command -v rustup >/dev/null 2>&1; then
+    rustup target add "$TARGET" >/dev/null
+fi
 
 # Force MinGW gcc/ar/ranlib so cargo + cc-rs + cmake all agree on the toolchain.
 export CC="${CC:-x86_64-w64-mingw32-gcc}"
