@@ -91,12 +91,18 @@ type Engine struct {
 	handle *C.OcrEngine
 }
 
-func lastError() string {
-	c := C.ocrrs_last_error()
-	if c == nil {
-		return "unknown error"
+// takeCError consumes an owned C string returned by the shim and returns it as
+// a Go error, freeing the C allocation. Returns nil if cErr is NULL.
+func takeCError(cErr *C.char, prefix string) error {
+	if cErr == nil {
+		return nil
 	}
-	return C.GoString(c)
+	msg := C.GoString(cErr)
+	C.ocrrs_free_string(cErr)
+	if prefix == "" {
+		return errors.New(msg)
+	}
+	return errors.New(prefix + ": " + msg)
 }
 
 // New creates an OCR engine.
@@ -115,9 +121,12 @@ func New(detPath, recPath, charsetPath string, backend Backend) (*Engine, error)
 	cChar := C.CString(charsetPath)
 	defer C.free(unsafe.Pointer(cChar))
 
-	h := C.ocrrs_create(cDet, cRec, cChar, C.int(backend))
-	if h == nil {
-		return nil, errors.New("ocrrs: create failed: " + lastError())
+	var h *C.OcrEngine
+	if err := takeCError(
+		C.ocrrs_create(cDet, cRec, cChar, C.int(backend), &h),
+		"ocrrs: create failed",
+	); err != nil {
+		return nil, err
 	}
 	e := &Engine{handle: h}
 	runtime.SetFinalizer(e, func(e *Engine) { e.Close() })
@@ -148,9 +157,12 @@ func (e *Engine) RecognizeJSON(imagePath string) (string, error) {
 	cPath := C.CString(imagePath)
 	defer C.free(unsafe.Pointer(cPath))
 
-	out := C.ocrrs_recognize_json(e.handle, cPath)
-	if out == nil {
-		return "", errors.New("ocrrs: recognize failed: " + lastError())
+	var out *C.char
+	if err := takeCError(
+		C.ocrrs_recognize_json(e.handle, cPath, &out),
+		"ocrrs: recognize failed",
+	); err != nil {
+		return "", err
 	}
 	defer C.ocrrs_free_string(out)
 	return C.GoString(out), nil

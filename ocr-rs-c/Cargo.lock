@@ -960,7 +960,6 @@ dependencies = [
  "image",
  "libc",
  "ocr-rs",
- "once_cell",
  "serde",
  "serde_json",
 ]

@@ -25,7 +25,8 @@ jobs:
           apt-get update
           apt-get install -y --no-install-recommends \
               ca-certificates curl git build-essential pkg-config \
-              software-properties-common gnupg
+              software-properties-common gnupg \
+              ocl-icd-opencl-dev libvulkan-dev
           # cmake >= 3.18 (MNN needs >= 3.10, ocr-rs prefers newer)
           curl -fsSL https://apt.kitware.com/keys/kitware-archive-latest.asc \
               | gpg --dearmor -o /usr/share/keyrings/kitware-archive.gpg
@@ -98,6 +99,10 @@ jobs:
             mingw-w64-x86_64-toolchain
             mingw-w64-x86_64-cmake
             mingw-w64-x86_64-ninja
+            mingw-w64-x86_64-opencl-headers
+            mingw-w64-x86_64-opencl-icd
+            mingw-w64-x86_64-vulkan-headers
+            mingw-w64-x86_64-vulkan-loader
       - name: Install Rust (MSYS2 shell)
         run: |
           curl -fsSL https://sh.rustup.rs -o rustup.sh

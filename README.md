@@ -94,11 +94,16 @@ Each script:
 
 ### Build prerequisites per platform
 
-| Platform | Tools required                                                                      |
-|----------|-------------------------------------------------------------------------------------|
-| Linux    | gcc-8/g++-8, cmake ≥ 3.10, rustup, GNU `ar`/`ranlib`                                 |
-| macOS    | Xcode Command Line Tools (clang, libtool), rustup with `*-apple-darwin` targets    |
-| Windows  | MSYS2 MINGW64 toolchain (`mingw-w64-x86_64-{toolchain,cmake,ninja}`), rustup w/ gnu |
+| Platform | Tools required                                                                                            |
+|----------|-----------------------------------------------------------------------------------------------------------|
+| Linux    | gcc-8/g++-8, cmake ≥ 3.10, rustup, GNU `ar`/`ranlib`, `ocl-icd-opencl-dev`, `libvulkan-dev`               |
+| macOS    | Xcode Command Line Tools (clang, libtool), rustup with `*-apple-darwin` targets                          |
+| Windows  | MSYS2 MINGW64: `mingw-w64-x86_64-{toolchain,cmake,ninja,opencl-{headers,icd},vulkan-{headers,loader}}`    |
+
+> The OpenCL / Vulkan dev packages only satisfy the *build-time* linker for
+> `ocr-rs`'s side-cdylib; the static archive we ship has no link-time
+> dependency on either runtime. MNN `dlopen`'s the actual ICDs at startup,
+> falling back to CPU when none are present.
 
 ## API
 

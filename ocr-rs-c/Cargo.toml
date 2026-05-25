@@ -9,10 +9,19 @@ license = "Apache-2.0"
 name = "ocr_rs_c"
 crate-type = ["staticlib"]
 
+[features]
+# Forward MNN backend features to the ocr-rs crate. CPU is always available
+# regardless of which of these are enabled.
+opencl = ["ocr-rs/opencl"]
+vulkan = ["ocr-rs/vulkan"]
+metal  = ["ocr-rs/metal"]
+opengl = ["ocr-rs/opengl"]
+cuda   = ["ocr-rs/cuda"]
+coreml = ["ocr-rs/coreml"]
+
 [dependencies]
 ocr-rs = { version = "2.2", features = ["build-mnn-from-source"] }
 image = "0.25"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-once_cell = "1"
 libc = "0.2"
