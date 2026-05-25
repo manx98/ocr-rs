@@ -168,9 +168,45 @@ func (e *Engine) RecognizeJSON(imagePath string) (string, error) {
 	return C.GoString(out), nil
 }
 
+// RecognizeJSONBytes is the in-memory variant of RecognizeJSON: data must
+// be the contents of an encoded image (PNG / JPEG / WebP / BMP / TIFF /
+// ICO etc.); the format is auto-detected from the magic bytes.
+func (e *Engine) RecognizeJSONBytes(data []byte) (string, error) {
+	if e == nil || e.handle == nil {
+		return "", errors.New("ocrrs: engine is closed")
+	}
+	if len(data) == 0 {
+		return "", errors.New("ocrrs: data is empty")
+	}
+
+	var out *C.char
+	if err := takeCError(
+		C.ocrrs_recognize_json_bytes(
+			e.handle,
+			(*C.uint8_t)(unsafe.Pointer(&data[0])),
+			C.size_t(len(data)),
+			&out,
+		),
+		"ocrrs: recognize failed",
+	); err != nil {
+		return "", err
+	}
+	defer C.ocrrs_free_string(out)
+	return C.GoString(out), nil
+}
+
 // Recognize is a convenience that decodes the JSON into a typed Output.
 func (e *Engine) Recognize(imagePath string) (*Output, error) {
-	s, err := e.RecognizeJSON(imagePath)
+	return decodeOutput(e.RecognizeJSON(imagePath))
+}
+
+// RecognizeBytes is the in-memory variant of Recognize: data must contain
+// an encoded image (PNG / JPEG / etc.); the format is auto-detected.
+func (e *Engine) RecognizeBytes(data []byte) (*Output, error) {
+	return decodeOutput(e.RecognizeJSONBytes(data))
+}
+
+func decodeOutput(s string, err error) (*Output, error) {
 	if err != nil {
 		return nil, err
 	}

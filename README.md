@@ -140,8 +140,16 @@ const (
 
 func New(detPath, recPath, charsetPath string, backend Backend) (*Engine, error)
 func (e *Engine) Close()
-func (e *Engine) RecognizeJSON(imagePath string) (string, error)
-func (e *Engine) Recognize(imagePath string) (*Output, error)
+
+// File-path entry points
+func (e *Engine) RecognizeJSON(imagePath string)  (string,  error)
+func (e *Engine) Recognize    (imagePath string)  (*Output, error)
+
+// In-memory entry points — `data` is the contents of an encoded image
+// (PNG / JPEG / WebP / BMP / TIFF / ICO …); format is auto-detected.
+func (e *Engine) RecognizeJSONBytes(data []byte) (string,  error)
+func (e *Engine) RecognizeBytes    (data []byte) (*Output, error)
+
 func Version() string
 ```
 

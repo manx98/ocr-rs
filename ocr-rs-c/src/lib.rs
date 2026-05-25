@@ -7,7 +7,9 @@
 use std::ffi::{CStr, CString};
 use std::os::raw::{c_char, c_int};
 use std::ptr;
+use std::slice;
 
+use image::DynamicImage;
 use ocr_rs::{Backend, OcrEngine, OcrEngineConfig};
 use serde::Serialize;
 
@@ -125,7 +127,50 @@ pub unsafe extern "C" fn ocrrs_destroy(engine: *mut OcrEngine) {
     }
 }
 
-/// Run OCR on `image_path`.
+/// Common pipeline: run OCR on `image`, serialize results to JSON, write
+/// the owned C string through `json_out`. Returns NULL on success or an
+/// owned error string on failure.
+unsafe fn recognize_and_serialize(
+    engine: *mut OcrEngine,
+    image: DynamicImage,
+    json_out: *mut *mut c_char,
+) -> *mut c_char {
+    let engine_ref: &OcrEngine = &*engine;
+    let results = match engine_ref.recognize(&image) {
+        Ok(r) => r,
+        Err(e) => return err_to_cstr(format!("recognize failed: {}", e)),
+    };
+
+    let items: Vec<JsonItem> = results
+        .into_iter()
+        .map(|r| JsonItem {
+            text: r.text,
+            confidence: r.confidence,
+            bbox: JsonBBox {
+                left: r.bbox.rect.left(),
+                top: r.bbox.rect.top(),
+                width: r.bbox.rect.width(),
+                height: r.bbox.rect.height(),
+            },
+        })
+        .collect();
+
+    let out = JsonOutput { results: items };
+    let s = match serde_json::to_string(&out) {
+        Ok(s) => s,
+        Err(e) => return err_to_cstr(format!("json serialization failed: {}", e)),
+    };
+
+    match CString::new(s) {
+        Ok(c) => {
+            *json_out = c.into_raw();
+            ptr::null_mut()
+        }
+        Err(_) => err_to_cstr("output contained NUL byte"),
+    }
+}
+
+/// Run OCR on the image file at `image_path`.
 ///
 /// On success returns NULL and writes an owned JSON string to `*json_out`;
 /// caller frees it with `ocrrs_free_string`. On failure returns an owned
@@ -164,39 +209,48 @@ pub unsafe extern "C" fn ocrrs_recognize_json(
         Err(e) => return err_to_cstr(format!("failed to open image: {}", e)),
     };
 
-    let engine_ref: &OcrEngine = &*engine;
-    let results = match engine_ref.recognize(&image) {
-        Ok(r) => r,
-        Err(e) => return err_to_cstr(format!("recognize failed: {}", e)),
-    };
+    recognize_and_serialize(engine, image, json_out)
+}
 
-    let items: Vec<JsonItem> = results
-        .into_iter()
-        .map(|r| JsonItem {
-            text: r.text,
-            confidence: r.confidence,
-            bbox: JsonBBox {
-                left: r.bbox.rect.left(),
-                top: r.bbox.rect.top(),
-                width: r.bbox.rect.width(),
-                height: r.bbox.rect.height(),
-            },
-        })
-        .collect();
-
-    let out = JsonOutput { results: items };
-    let s = match serde_json::to_string(&out) {
-        Ok(s) => s,
-        Err(e) => return err_to_cstr(format!("json serialization failed: {}", e)),
-    };
-
-    match CString::new(s) {
-        Ok(c) => {
-            *json_out = c.into_raw();
-            ptr::null_mut()
-        }
-        Err(_) => err_to_cstr("output contained NUL byte"),
+/// Run OCR on an in-memory encoded image (PNG / JPEG / WebP / BMP / TIFF /
+/// ICO / ... whatever the `image` crate's `load_from_memory` recognises by
+/// magic bytes).
+///
+/// `data` may be NULL only when `len == 0`. The result schema, the
+/// success/failure protocol, and the `json_out` ownership model are
+/// identical to `ocrrs_recognize_json`.
+///
+/// # Safety
+/// `engine` must be a live pointer from `ocrrs_create`; `data` must point
+/// to at least `len` readable bytes (or be NULL with `len == 0`);
+/// `json_out` must be a non-null pointer to writable memory.
+#[no_mangle]
+pub unsafe extern "C" fn ocrrs_recognize_json_bytes(
+    engine: *mut OcrEngine,
+    data: *const u8,
+    len: usize,
+    json_out: *mut *mut c_char,
+) -> *mut c_char {
+    if engine.is_null() {
+        return err_to_cstr("engine is null");
     }
+    if json_out.is_null() {
+        return err_to_cstr("json_out is null");
+    }
+    if data.is_null() && len != 0 {
+        return err_to_cstr("data is null but len != 0");
+    }
+    if len == 0 {
+        return err_to_cstr("data is empty");
+    }
+
+    let bytes = slice::from_raw_parts(data, len);
+    let image = match image::load_from_memory(bytes) {
+        Ok(img) => img,
+        Err(e) => return err_to_cstr(format!("failed to decode image: {}", e)),
+    };
+
+    recognize_and_serialize(engine, image, json_out)
 }
 
 /// Free a string previously returned by this library (either error or JSON).

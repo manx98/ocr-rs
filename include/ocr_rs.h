@@ -1,6 +1,9 @@
 #ifndef OCR_RS_H
 #define OCR_RS_H
 
+#include <stddef.h>
+#include <stdint.h>
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -53,6 +56,15 @@ void ocrrs_destroy(OcrEngine *engine);
 char *ocrrs_recognize_json(OcrEngine *engine,
                            const char *image_path,
                            char **json_out);
+
+/* Run OCR on an in-memory encoded image (PNG / JPEG / WebP / BMP / TIFF
+ * / ICO etc.; format is auto-detected from the magic bytes). `data` may
+ * be NULL only when `len` is 0 (which is itself an error). Same success
+ * / failure protocol as ocrrs_recognize_json. */
+char *ocrrs_recognize_json_bytes(OcrEngine *engine,
+                                 const uint8_t *data,
+                                 size_t len,
+                                 char **json_out);
 
 /* Free a string returned by this library (either an error message or a JSON
  * output buffer). Safe to call with NULL. */
