@@ -1,4 +1,4 @@
-.PHONY: help linux macos macos-amd64 macos-arm64 windows example run clean
+.PHONY: help linux macos macos-amd64 macos-arm64 example run clean
 
 CARGO ?= cargo
 GO    ?= go
@@ -9,7 +9,6 @@ help:
 	@echo "  macos        rebuild the prebuilt archive for the host's arch    (run on macOS)"
 	@echo "  macos-amd64  cross-build the darwin_amd64 archive                (run on macOS)"
 	@echo "  macos-arm64  cross-build the darwin_arm64 archive                (run on macOS)"
-	@echo "  windows      rebuild prebuilt/windows_amd64/ocr_rs_combined.lib (MSVC dev cmd)"
 	@echo "  example      build the Go example binary"
 	@echo "  run ARGS=... build + run the Go example"
 	@echo "  clean        cargo clean and remove the Go example binary"
@@ -28,9 +27,6 @@ macos-amd64:
 
 macos-arm64:
 	OCRRS_TARGET=aarch64-apple-darwin bash scripts/build_macos.sh
-
-windows:
-	pwsh -File scripts/build_windows.ps1
 
 example:
 	cd examples && $(GO) build -o ocr-example .

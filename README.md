@@ -3,12 +3,10 @@
 Go bindings for the Rust [`ocr-rs`](https://docs.rs/ocr-rs/) crate (PaddleOCR
 text detection + recognition via MNN).
 
-The repository ships **per-platform prebuilt static archives** under
-`prebuilt/<os>_<arch>/` (`.a` everywhere except Windows, where it is a
-MSVC-format `.lib`), so end users do **not** need a Rust toolchain, MNN
-install, or any other native dependency — `go get` and `go build` are
-enough on Linux/macOS. Windows consumers need an MSVC environment (see
-below).
+The repository ships **per-platform prebuilt static archives** at
+`prebuilt/<os>_<arch>/libocr_rs_combined.a`, so end users do **not** need
+a Rust toolchain, MNN install, or any other native dependency — `go get`
+and `go build` are enough.
 
 ```go
 import ocrrs "github.com/manx98/ocr-rs"
@@ -25,35 +23,25 @@ for _, r := range out.Results {
 
 ## Supported targets
 
-| GOOS    | GOARCH | Backends bundled                  |
-|---------|--------|-----------------------------------|
+| GOOS    | GOARCH | Backends bundled                       |
+|---------|--------|----------------------------------------|
 | linux   | amd64  | CPU + OpenCL + Vulkan                  |
 | darwin  | amd64  | CPU + OpenCL + Vulkan + Metal + CoreML |
 | darwin  | arm64  | CPU + OpenCL + Vulkan + Metal + CoreML |
-| windows | amd64  | CPU + OpenCL + Vulkan (MSVC only)      |
+
+Windows is **not** supported: ocr-rs upstream hard-codes an NMake
+generator and MSVC-only compiler flags, and the resulting MSVC static
+archive exceeds GitHub's 100 MB per-file hard cap even after size
+tuning — none of the workarounds (split archives, LFS, MinGW patching)
+have a clean enough trade-off to ship. Use Linux/macOS, or build the
+Rust shim yourself.
 
 The Linux archive is produced inside an Ubuntu 18.04 container, so the
 resulting binaries link cleanly on every distro with glibc ≥ 2.27.
 
-On Linux/macOS the OpenCL/Vulkan runtimes are `dlopen`'d at runtime by
-MNN — the static archive has no link-time dependency on them, so falling
-back to the CPU backend always works when no GPU/driver is present.
-
-### Windows consumer requirements
-
-The Windows prebuilt is MSVC-format because `ocr-rs` upstream hard-codes
-an `NMake Makefiles` CMake generator plus MSVC-only compiler flags (no
-MinGW path). To build a Go program against it:
-
-1. Install **Visual Studio Build Tools** (Desktop development with C++).
-2. Open a *Developer Command Prompt* (or run `vcvars64.bat`) so cl.exe,
-   link.exe and lib.exe are on `PATH`.
-3. Set `CC=cl` (and optionally `CXX=cl`) before `go build` — this makes
-   cgo use the MSVC driver instead of its default MinGW gcc.
-
-At runtime, OpenCL.dll and vulkan-1.dll must be reachable (both come
-bundled with current NVIDIA/AMD/Intel GPU drivers). With neither
-present, only `BackendCPU` is functional.
+The OpenCL/Vulkan runtimes are `dlopen`'d at runtime by MNN — the
+static archive has no link-time dependency on them, so falling back to
+the CPU backend always works when no GPU/driver is present.
 
 ## Layout
 
@@ -64,7 +52,7 @@ prebuilt/<os>_<arch>/...         Prebuilt static archives (consumed by cgo)
 ocr-rs-c/                        Rust C-ABI shim source (for rebuilding)
 scripts/build_<os>.sh            Platform build scripts
 scripts/merge_libs.sh            Combines shim + libmnn_wrapper + libMNN
-.github/workflows/prebuilt.yml   CI driving all four targets
+.github/workflows/prebuilt.yml   CI driving the supported targets
 examples/                        Sample binary (same Go module)
 Makefile                         Convenience wrapper around the scripts
 ```
@@ -82,9 +70,10 @@ make run ARGS="det.mnn rec.mnn keys.txt image.jpg"
 
 End users never need to do this. The scripts below are for maintainers
 shipping a new version. The recommended path is the GitHub Actions
-workflow at `.github/workflows/prebuilt.yml`, which produces all four
-archives on the matching runners; the `bundle` job collects them into a
-single artifact you can drop back into `prebuilt/`.
+workflow at `.github/workflows/prebuilt.yml`, which produces every
+archive on the matching runners; the `bundle` job collects them into a
+single artifact and commits the refreshed `prebuilt/` directory back to
+the triggering branch.
 
 To run a single platform locally:
 
@@ -95,9 +84,6 @@ make linux
 # macOS (Xcode CLT installed). Defaults to host arch; or:
 make macos-amd64
 make macos-arm64
-
-# Windows: from the MSYS2/MINGW64 shell
-make windows
 ```
 
 Each script:
@@ -107,21 +93,20 @@ Each script:
    `ocr-rs-c/Cargo.toml`, so MNN is compiled from source — no MNN
    install required).
 2. Invokes `scripts/merge_libs.sh` to combine the shim + MNN archives
-   into a single self-contained `libocr_rs_combined.a` under the matching
-   `prebuilt/` directory.
+   into a single self-contained `libocr_rs_combined.a` under the
+   matching `prebuilt/` directory.
 
 ### Build prerequisites per platform
 
-| Platform | Tools required                                                                                            |
-|----------|-----------------------------------------------------------------------------------------------------------|
+| Platform | Tools required                                                                                                  |
+|----------|-----------------------------------------------------------------------------------------------------------------|
 | Linux    | gcc-8/g++-8, cmake ≥ 3.10, rustup, GNU `ar`/`ranlib`, clang+libclang-dev, `ocl-icd-opencl-dev`, `libvulkan-dev` |
-| macOS    | Xcode Command Line Tools (clang, libtool), rustup with `*-apple-darwin` targets                          |
-| Windows  | VS Build Tools (cl/link/lib/nmake on PATH), Vulkan SDK (LunarG), OpenCL.lib (e.g. vcpkg `opencl`), rustup w/ MSVC |
+| macOS    | Xcode Command Line Tools (clang, libtool), rustup with `*-apple-darwin` targets                                 |
 
-> The OpenCL / Vulkan dev packages only satisfy the *build-time* linker for
-> `ocr-rs`'s side-cdylib; the static archive we ship has no link-time
-> dependency on either runtime. MNN `dlopen`'s the actual ICDs at startup,
-> falling back to CPU when none are present.
+> The OpenCL / Vulkan dev packages only satisfy the *build-time* linker
+> for `ocr-rs`'s side-cdylib; the static archive we ship has no link-time
+> dependency on either runtime. MNN `dlopen`'s the actual ICDs at
+> startup, falling back to CPU when none are present.
 
 ## API
 

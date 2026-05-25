@@ -123,64 +123,12 @@ jobs:
           path: prebuilt/darwin_${{ matrix.goarch }}/libocr_rs_combined.a
 
   # ---------------------------------------------------------------------------
-  # Windows: x86_64-pc-windows-msvc.
-  #
-  # ocr-rs's build.rs hard-codes a "NMake Makefiles" CMake generator and
-  # MSVC-only /MT/MD flags, so the MinGW path is not viable. We go MSVC
-  # end-to-end: vcvars set up via ilammy/msvc-dev-cmd, Vulkan SDK from
-  # LunarG (provides vulkan-1.lib + headers), OpenCL.lib from vcpkg.
-  # ocr-rs emits `cargo:rustc-link-lib=vulkan`, but the LunarG SDK ships
-  # the lib as vulkan-1.lib, so we add a vulkan.lib alias.
-  # ---------------------------------------------------------------------------
-  windows-amd64:
-    runs-on: windows-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Set up MSVC environment
-        uses: ilammy/msvc-dev-cmd@v1
-        with:
-          arch: x64
-      - name: Install Vulkan SDK
-        shell: pwsh
-        run: |
-          choco install vulkan-sdk -y --no-progress
-          $vulkanRoot = (Get-ChildItem "C:\VulkanSDK" | Sort-Object Name -Descending | Select-Object -First 1).FullName
-          # ocr-rs's build.rs emits `cargo:rustc-link-lib=vulkan`, but LunarG
-          # ships the import lib as vulkan-1.lib. Alias it so link.exe finds
-          # the expected name.
-          Copy-Item "$vulkanRoot\Lib\vulkan-1.lib" "$vulkanRoot\Lib\vulkan.lib" -Force
-          "VULKAN_SDK=$vulkanRoot" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
-          "LIB=$vulkanRoot\Lib;$env:LIB" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
-          "INCLUDE=$vulkanRoot\Include;$env:INCLUDE" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
-      - name: Install OpenCL via vcpkg
-        shell: pwsh
-        run: |
-          vcpkg install opencl:x64-windows
-          $ocl_lib = "C:\vcpkg\installed\x64-windows\lib"
-          $ocl_inc = "C:\vcpkg\installed\x64-windows\include"
-          "LIB=$ocl_lib;$env:LIB" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
-          "INCLUDE=$ocl_inc;$env:INCLUDE" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
-      - name: Install Rust toolchain (msvc)
-        shell: pwsh
-        run: |
-          rustup toolchain install stable-x86_64-pc-windows-msvc --profile minimal
-          rustup default stable-x86_64-pc-windows-msvc
-          rustup target add x86_64-pc-windows-msvc
-      - name: Build
-        shell: pwsh
-        run: scripts/build_windows.ps1
-      - uses: actions/upload-artifact@v4
-        with:
-          name: prebuilt-windows_amd64
-          path: prebuilt/windows_amd64/ocr_rs_combined.lib
-
-  # ---------------------------------------------------------------------------
   # Collect every per-platform artifact into prebuilt/, commit it back to the
   # branch the workflow was dispatched from, and also upload a combined
   # workflow artifact for download.
   # ---------------------------------------------------------------------------
   bundle:
-    needs: [linux-amd64, macos, windows-amd64]
+    needs: [linux-amd64, macos]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -228,6 +176,4 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: prebuilt-all
-          path: |
-            prebuilt/**/libocr_rs_combined.a
-            prebuilt/**/ocr_rs_combined.lib
+          path: prebuilt/**/libocr_rs_combined.a
