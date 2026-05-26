@@ -26,6 +26,7 @@ for _, r := range out.Results {
 | GOOS    | GOARCH | Backends bundled                       |
 |---------|--------|----------------------------------------|
 | linux   | amd64  | CPU + OpenCL + Vulkan                  |
+| linux   | arm64  | CPU + OpenCL + Vulkan                  |
 | darwin  | amd64  | CPU + OpenCL + Vulkan + Metal + CoreML |
 | darwin  | arm64  | CPU + OpenCL + Vulkan + Metal + CoreML |
 

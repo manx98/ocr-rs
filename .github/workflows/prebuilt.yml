@@ -7,26 +7,43 @@ on:
 
 jobs:
   # ---------------------------------------------------------------------------
-  # Linux: build inside an Ubuntu 18.04 docker container so the resulting
-  # archive only needs glibc 2.27 at runtime.
+  # Linux: build inside a Docker container so the resulting archive only
+  # needs a minimum glibc version at runtime.
   #
   # We deliberately do NOT use the workflow's `container:` field, because the
   # runner injects a node20 binary that requires GLIBC_2.28 — which 18.04
-  # does not have. Instead, keep all GitHub action helpers (checkout,
+  # does not have. Instead keep all GitHub action helpers (checkout,
   # upload-artifact) on the host runner, and only the cargo build runs in
-  # the ubuntu:18.04 container.
+  # the container.
+  #
+  # amd64 → ubuntu:18.04 (glibc 2.27): broadest x86_64 distro compatibility.
+  # arm64 → ubuntu:22.04 (glibc 2.35): MNN 3.4.x KleidiAI ARM64 backend
+  #   compiles with -march=armv8.2-a+i8mm+sve2+…; GNU assembler 2.37+ is
+  #   required for +i8mm/+sve2, and 18.04's binutils 2.30 rejects them.
+  #   22.04 ships binutils 2.38. glibc 2.35 is the baseline for Ubuntu 22.04
+  #   / Debian 12 arm64 targets, which is acceptable.
   # ---------------------------------------------------------------------------
-  linux-amd64:
-    runs-on: ubuntu-latest
+  linux:
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - goarch: amd64
+            runner: ubuntu-latest
+            container: ubuntu:18.04
+          - goarch: arm64
+            runner: ubuntu-24.04-arm
+            container: ubuntu:22.04
     steps:
       - uses: actions/checkout@v4
-      - name: Build inside ubuntu:18.04
+      - name: Build inside ${{ matrix.container }}
         run: |
           set -eux
           docker run --rm \
             -v "$PWD":/work -w /work \
             -e DEBIAN_FRONTEND=noninteractive \
-            ubuntu:18.04 bash -c '
+            ${{ matrix.container }} bash -c '
               set -eux
               apt-get update
               apt-get install -y --no-install-recommends \
@@ -34,28 +51,39 @@ jobs:
                   software-properties-common gnupg \
                   clang libclang-dev \
                   ocl-icd-opencl-dev libvulkan-dev
-              # cmake >= 3.18 from Kitware (default 18.04 cmake is 3.10)
-              curl -fsSL https://apt.kitware.com/keys/kitware-archive-latest.asc \
-                  | gpg --dearmor -o /usr/share/keyrings/kitware-archive.gpg
-              echo "deb [signed-by=/usr/share/keyrings/kitware-archive.gpg] https://apt.kitware.com/ubuntu/ bionic main" \
-                  > /etc/apt/sources.list.d/kitware.list
-              apt-get update
-              apt-get install -y --no-install-recommends cmake
-              # gcc-8 for C++17 in MNN (default 18.04 gcc is 7)
-              add-apt-repository -y ppa:ubuntu-toolchain-r/test
-              apt-get update
-              apt-get install -y --no-install-recommends gcc-8 g++-8
-              update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-8 80 \
-                  --slave /usr/bin/g++ g++ /usr/bin/g++-8
+
+              UBUNTU_VER=$(. /etc/os-release && echo "$VERSION_ID")
+              if [[ "$UBUNTU_VER" == "18.04" ]]; then
+                  # cmake >= 3.18 from Kitware (default 18.04 cmake is 3.10)
+                  curl -fsSL https://apt.kitware.com/keys/kitware-archive-latest.asc \
+                      | gpg --dearmor -o /usr/share/keyrings/kitware-archive.gpg
+                  echo "deb [signed-by=/usr/share/keyrings/kitware-archive.gpg] https://apt.kitware.com/ubuntu/ bionic main" \
+                      > /etc/apt/sources.list.d/kitware.list
+                  apt-get update
+                  apt-get install -y --no-install-recommends cmake
+                  # gcc-10 for C++17 (default 18.04 gcc is 7)
+                  add-apt-repository -y ppa:ubuntu-toolchain-r/test
+                  apt-get update
+                  apt-get install -y --no-install-recommends gcc-10 g++-10
+                  update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-10 80 \
+                      --slave /usr/bin/g++ g++ /usr/bin/g++-10
+              else
+                  # Ubuntu 22.04+: cmake 3.22 and gcc-12 in default repos,
+                  # binutils 2.38 supports all KleidiAI -march modifiers.
+                  apt-get install -y --no-install-recommends cmake gcc g++
+              fi
+
               # rustup
               curl -fsSL https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain stable
               export PATH="$HOME/.cargo/bin:$PATH"
               bash scripts/build_linux.sh
             '
+      - name: Verify archive arch
+        run: file "prebuilt/linux_${{ matrix.goarch }}/libocr_rs_combined.a" | head -3
       - uses: actions/upload-artifact@v4
         with:
-          name: prebuilt-linux_amd64
-          path: prebuilt/linux_amd64/libocr_rs_combined.a
+          name: prebuilt-linux_${{ matrix.goarch }}
+          path: prebuilt/linux_${{ matrix.goarch }}/libocr_rs_combined.a
 
   # ---------------------------------------------------------------------------
   # macOS: both arch variants are built on macos-14 (arm host).
@@ -128,7 +156,7 @@ jobs:
   # workflow artifact for download.
   # ---------------------------------------------------------------------------
   bundle:
-    needs: [linux-amd64, macos]
+    needs: [linux, macos]
     runs-on: ubuntu-latest
     permissions:
       contents: write
